@@ -1,0 +1,893 @@
+---
+title: 'STA 380, Part 2: Exercises'
+author: "Alishah Vidhani, Marshall Wurangian, Sungho Park, Troy Walton, Maryam Blooki"
+date: "8/18/2020"
+output: pdf_document
+---
+
+tinytex:::install_prebuilt()
+tinytex:::is_tinytex()
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Visual story telling part 1: green buildings
+
+```{r 1, echo = FALSE}
+library(mosaic)
+library(tidyverse)
+library(ggplot2)
+library(corrplot)
+library(RColorBrewer)
+```
+
+```{r load data 1, echo=FALSE}
+green <- read.csv("./Data/greenbuildings.csv")
+str(green)
+```
+
+* Figure 1: Summary of Data Set
+
+```{r summary of data, echo=FALSE}
+summary(green)
+```
+
+* Before deleting any data points from the data set, a histogram was made for some variables to see the distribution shape of the data.
+
+* Figure 2: Histogram of Leasing_rate
+
+```{r leasing rate histogram, echo=FALSE}
+hist(green$leasing_rate)
+```
+
+* The leasing_rate histogram is skewed to the left, and there is a rise in number of leasing rates between 0% and 10%, which is located at the end of the skewed tail.
+
+```{r find and drop na values, echo=FALSE}
+which(is.na(green))
+withoutna<-na.omit(green)
+```
+
+* Observations that were not available were dropped. None of the variables are correlated with rent except for cluster_rent, which is not essential to the analysis.
+
+```{r number of green building types, include=FALSE}
+greenbuildingsonly=subset(green, green_rating ==1)
+nrow(greenbuildingsonly)
+nrow(green)
+```
+
+* Out of 7894 locations, less than 10% of the total number of buildings are green buildings, so a histogram of green buildings' leasing_rates should be considered.
+
+* Figure 3: Histogram of Leasing_rate Conditional on green_rate
+
+```{r leasing rate histogram for green buildings, echo=FALSE}
+hist(green$leasing_rate[green$green_rating==1])
+```
+
+* Comparing Figure 2 to Figure 3, the data is still skewed to the left, but there is no rise in the number of leasing rates between 0% and 10% for green buildings.
+
+* Figure 4: Summary Statistics for Green Buildings
+
+```{r summary statistics for green buildings, echo=FALSE}
+summary(greenbuildingsonly)
+```
+
+```{r number of non green building types, include=FALSE}
+nongreenbuildingsonly=subset(green, green_rating ==0)
+```
+
+* Figure 5: Summary Statistics for Non Green Buildings
+
+```{r summary statistics for non green buildings, echo=FALSE}
+summary(nongreenbuildingsonly)
+```
+
+```{r linear regression, echo=FALSE}
+model<-lm(Rent~LEED, data=green)
+summary(model)
+```
+
+* LEED is not statistically significant, so it cannot be a reliable variable to predict premium green rent prices.
+
+```{r multiple regression, echo=FALSE}
+model2<-glm(Rent~., data=green[3:23])
+summary(model2)
+```
+
+* Statistically Significant with P-Values < .05: size, empl_gr, stories, age, class-a, class_b, net, amenities, hd_total07, Precipitation, Gas_Costs, Electricity_Costs, and cluster_rent
+
+* Not Statistically Significant: leasing_rate, renovated, LEED, Energystar, green_rating, net, cd_total_07, total_dd_07
+
+* Outliers can make the mean unreliable. However, the mean rent for green buildings is 30.02, and the median rent for green buildings is 27.6. The mean rent for non green buildings is 28.27, and the median rent for non green buildings is 25. Because the mean and median are not the same for green and non green buildings, the mean should be considered in the analysis, especially if the distribution of data is skewed to the left.
+
+* The worker suggested that a 250,000 square foot green building would generate more revenue than a non green building because the median rent is higher. This assumption is problematic. Green buildings have different costs than non green buildings, which would affect profitability. 
+
+* The worker assumes rent prices won't change over time. The age and class of a building effects revenue.
+
+
+# Visual story telling part 2: flights at ABIA
+
+```{r load data 2, echo=FALSE}
+library(rgdal)
+library(tidyverse)
+library(ggplot2)
+library(usmap)
+library(lubridate)
+library(randomForest)
+library(splines)
+library(pdp)
+urlfile<-"https://raw.githubusercontent.com/datasets/airport-codes/master/data/airport-codes.csv"
+abia<-read.csv('./Data/ABIA.csv')
+airport_code<-read.csv(urlfile)
+```
+
+* Figure 1: Summary Statistics for Each Variable
+
+```{r summary of data 2, echo=FALSE}
+summary(abia)
+```
+
+* The output above shows the minimum & maximum values, the median, and mean for each variable.
+
+* Figure 2: Logistic Regression Dependent-DepTime & Independent-Month, DayOfWeek, ArrTime, & Distance
+
+```{r logistic regression, echo=FALSE}
+logistic <- glm(abia$DepTime ~ abia$Month + abia$DayOfWeek + abia$ArrTime + abia$Distance)
+summary(logistic)
+```
+
+* P-values less than .05 are statistically significant to the logistic regresison model. All independent variables are statistically significant to the model.
+
+* Figure 3: Histogram of DepTime
+
+```{r histogram of deptime, echo=FALSE}
+hist(abia$DepTime)
+```
+
+* There aren't very many departures between 0 and 500. It is difficult to assume normality.
+
+```{r coordinate format, echo=FALSE}
+coordinate<- airport_code$coordinates %>% 
+  str_split_fixed(", ", n=2) %>% 
+  as.data.frame %>% 
+  transmute(lat=V1, lon=V2)
+```
+
+```{r coordinate type, echo=FALSE}
+coordinate$lon<-as.numeric(as.character(coordinate$lon))
+coordinate$lat<-as.numeric(as.character(coordinate$lat))
+```
+
+```{read coordinates and merge with data set, echo = FALSE}
+airport_code<-merge(airport_code, coordinate, by=0)
+airport_code_subset<-airport_code[c(15,14,11)]
+airport_code_subset<-airport_code_subset[airport_code_subset$iata_code!="",]
+airport_code_subset<-usmap_transform(airport_code_subset)
+airport_map<- merge(x=airport_code_subset,y=abia, by.x=c("iata_code"), by.y=c("Origin"))
+p0<-plot_usmap() + scale_color_gradient(low = 'blue', high='red')
+p0 + geom_point(data=airport_map, aes(x=lon.1, y=lat.1, color=ArrDelay))
+```
+
+```{r plot map ArrDelay, echo=FALSE}
+#p0 + geom_point(data=airport_map, aes(x=lon.1, y=lat.1, color=ArrDelay))
+```
+
+* Visualization of ArrDelay Throughout Different Locations: Consistent Throughout All Regions
+
+```{r , echo=FALSE}
+airport_code<-merge(airport_code, coordinate, by=0)
+airport_code_subset<-airport_code[c(15,14,11)]
+airport_code_subset<-airport_code_subset[airport_code_subset$iata_code!="",]
+airport_code_subset<-usmap_transform(airport_code_subset)
+airport_map<- merge(x=airport_code_subset,y=abia, by.x=c("iata_code"), by.y=c("Origin"))
+p0<-plot_usmap() + scale_color_gradient(low = 'blue', high='red')
+p0 + geom_point(data=airport_map, aes(x=lon.1, y=lat.1, color=AirTime))
+```
+
+* Visualization of AirTimethroughout Different Locations: Central Region-Less AirTime
+
+# Portfolio Modeling
+## In this problem, you will construct three different portfolios of exchange-traded funds, or ETFs, and use bootstrap resampling to analyze the short-term tail risk of your portfolios. 
+
+* The exchange-traded funds (ETFs) was selected considering unique portfolios. 6 ETFs - "QQQ","EPV","AOR","SVXY","YYY" and SPY" were selected. 5 years of ETF data starting from 01-Jan-2014 were analyzed. ETF QQQ trust is one of the largest, consisting of only non-financial stocks. EPV is a low performing ETF. AQR is a diverse ETF. SVXY is a high risk ETF because the performance is dependent on the market volatility rather than security. YYY is an amplified high income ETF. SPY is one of the safest (in terms of risk, represented as sigma (standard deviation) and largest ETFs. 
+
+```{r 4, echo = FALSE}
+library(mosaic)
+library(quantmod)
+library(foreach)
+library(ggstance)
+
+# Import a few stocks
+mystocks = c("SPY", "SVXY", "QQQ", "YYY","IWF")
+getSymbols(mystocks)
+
+# Adjust for splits and dividends
+SPYa = adjustOHLC(SPY)
+SVXYa = adjustOHLC(SVXY)
+QQQa = adjustOHLC(QQQ)
+YYYa = adjustOHLC(YYY)
+IWFa = adjustOHLC(IWF)
+
+# Look at close-to-close changes
+plot(ClCl(SPYa))
+plot(ClCl(SVXYa))
+plot(ClCl(QQQa))
+plot(ClCl(YYYa))
+plot(ClCl(IWFa))
+
+# Combine close to close changes in a single matrix
+all_returns = cbind(ClCl(SPYa),ClCl(SVXYa),ClCl(QQQa),ClCl(YYYa),ClCl(IWFa))
+head(all_returns)
+
+# first row is NA because before data was not considered
+all_returns = as.matrix(na.omit(all_returns))
+N = nrow(all_returns)
+
+# These returns can be viewed as draws from the joint distribution: strong correlation, but not Gaussian
+pairs(all_returns)
+plot(all_returns[,1], type='l')
+
+# Look at the market returns over time
+plot(all_returns[,3], type='l')
+
+# Look if today's returns are correlated with tomorrow
+plot(all_returns[1:(N-1),3], all_returns[2:N,3])
+
+# An autocorrelation plot
+acf(all_returns[,3])
+
+# Conclusion: returns uncorrelated from one day to the next
+
+```
+Initial capital is $100,000
+
+Portfolio 1: Modeling a safe portfolio
+
+ETFs used: "SPY" , "QQQ", "AOR"
+
+```{r 5, echo = FALSE}
+
+##Bootstrap resampling approach with additional stocks
+
+mystocks = c("SPY", "SVXY","QQQ","YYY","EPV", "AOR")
+myprices = getSymbols(mystocks, from = "2014-01-01")
+
+
+# A chunk of code for adjusting all stocks creates a new object adding 'a' to the end. Ex: SPY becomes SPYa, etc.
+for(ticker in mystocks) {
+  expr = paste0(ticker, "a = adjustOHLC(", ticker, ")")
+  eval(parse(text=expr))
+}
+
+head(SPYa)
+
+# Combine all the returns in a matrix
+all_returns = cbind(	ClCl(SPYa),
+                     ClCl(SVXYa),
+                     ClCl(QQQa),
+                     ClCl(YYYa),
+                     ClCl(EPVa),
+                      ClCl(AORa))
+              
+head(all_returns)
+all_returns = as.matrix(na.omit(all_returns))
+
+# Compute the returns from the closing prices
+pairs(all_returns)
+
+# Sample a random return from the empirical joint distribution
+return.today = resample(all_returns, 1, orig.ids=FALSE) 
+
+initial_wealth = 100000
+
+sim1 = foreach(i=1:5000, .combine = rbind) %do% {
+  weights = c(0.4, 0.03, 0.3, 0.03, 0.02, 0.3)
+  total_wealth = initial_wealth
+  holdings = total_wealth * weights
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  
+  for(today in 1:n_days){
+    return_today = resample(all_returns, 1, orig.ids=FALSE)
+    holdings = holdings * (1 + return_today)
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+    
+# Rebalancing
+holdings = total_wealth * weights
+  }
+  
+  wealthtracker
+}
+head(sim1)
+hist(sim1[,n_days], 50)
+plot(density(sim1[,n_days]))
+
+# Profit/loss
+hist(sim1[,n_days]- initial_wealth, breaks=30)
+conf_5Per = confint(sim1[,n_days]- initial_wealth, level = 0.90)$'5%'
+cat('\nAverage return of investement after 20 days', mean(sim1[,n_days]), "\n")
+cat('\n5% Value at Risk for safe portfolio-',conf_5Per, "\n")
+```
+
+```{r 6, echo = FALSE}
+wealth_daywise = c()
+  
+for (i in 1:n_days){
+    wealth_daywise[i] = mean(sim1[,i]) 
+}
+days = 1:n_days
+df = data.frame(wealth_daywise, days)
+```
+
+```{r 7, echo = FALSE}
+ggplot(data=df, aes(x=days, y=wealth_daywise, group=1)) +
+  geom_line(color="blue")+
+  geom_point() +
+  xlab('Trading Days') +
+  ylab('Return on Investments') + 
+  ggtitle('Safe Portfolio: Returns over 20 days')
+```
+
+```{r 8, echo = FALSE}
+hist(sim1[,n_days], 50)
+plot(density(sim1[,n_days]))
+hist(sim1[,n_days]- initial_wealth, breaks=30)
+conf_5Per = confint(sim1[,n_days]- initial_wealth, level = 0.90)$'5%'
+print(cat('\nAverage return on investement after 20 days', mean(sim1[,n_days]), "\n"))
+cat('\n5% Value at Risk for safe portfolio-',conf_5Per, "\n")
+```
+
+* Portfolio 2: High Risk Model
+
+Using ETFs: SVXY, YYY, IWF
+
+Distributed 90% of the total wealth among the low performing ETFs
+
+```{r 9, echo = FALSE}
+sim2 = foreach(i=1:5000, .combine = rbind) %do% {
+  weights = c(0.01, 0.3, 0.03, 0.03, 0.4, 0.3)
+  total_wealth = initial_wealth
+  holdings = total_wealth * weights
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  
+  for(today in 1:n_days){
+    
+    return_today = resample(all_returns, 1, orig.ids=FALSE)
+    holdings = holdings * (1 + return_today)
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+    
+# Rebalancing
+holdings = total_wealth * weights
+  }
+  
+  wealthtracker
+}
+head(sim2)
+hist(sim2[,n_days], 50)
+plot(density(sim2[,n_days]))
+# Profit/loss
+hist(sim2[,n_days]- initial_wealth, breaks=30)
+hist(sim2[,n_days]- initial_wealth, breaks=30)
+conf_5Per = confint(sim2[,n_days]- initial_wealth, level = 0.90)$'5%'
+cat('\nAverage return of investement after 20 days', mean(sim2[,n_days]), "\n")
+cat('\n5% Value at Risk for High portfolio-',conf_5Per, "\n")
+```
+
+```{r 10, echo = FALSE}
+wealth_daywise = c()
+  
+for (i in 1:n_days){
+    wealth_daywise[i] = mean(sim2[,i]) 
+}
+days = 1:n_days
+df = data.frame(wealth_daywise, days)
+```
+
+```{r 11, echo = FALSE}
+ggplot(data=df, aes(x=days, y=wealth_daywise, group=1)) +
+  geom_line(color="blue")+
+  geom_point() +
+  xlab('Trading Days') +
+  ylab('Return on Investments') + 
+  ggtitle('High Risk Portfolio: Returns over 20 days')
+```
+
+```{r 12, echo = FALSE}
+hist(sim2[,n_days], 50)
+plot(density(sim2[,n_days]))
+# Profit/loss
+hist(sim2[,n_days]- initial_wealth, breaks=30)
+conf_5Per = confint(sim2[,n_days]- initial_wealth, level = 0.90)$'5%'
+cat('\nAverage return on investement after 20 days', mean(sim2[,n_days]), "\n")
+cat('\n5% Value at Risk for High portfolio-',conf_5Per, "\n")
+```
+
+*Portfolio 3: Using equal weights for all ETFs
+
+```{r 13, echo = FALSE}
+sim3 = foreach(i=1:5000, .combine = rbind) %do% {
+  weights = c(0.12, 0.12, 0.12, 0.12, 0.12, 0.12)
+  total_wealth = initial_wealth
+  holdings = total_wealth * weights
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  
+  for(today in 1:n_days){
+    
+    return_today = resample(all_returns, 1, orig.ids=FALSE)
+    holdings = holdings * (1 + return_today)
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+    
+# Rebalancing
+holdings = total_wealth * weights
+  }
+  
+  wealthtracker
+}
+head(sim3)
+```
+
+```{r 14, echo = FALSE}
+hist(sim3[,n_days], 50)
+plot(density(sim3[,n_days]))
+# Profit/loss
+hist(sim3[,n_days]- initial_wealth, breaks=30)
+conf_5Per = confint(sim3[,n_days]- initial_wealth, level = 0.90)$'5%'
+cat('\nAverage return on investement after 20 days', mean(sim3[,n_days]), "\n")
+cat('\n5% Value at Risk for High portfolio-',conf_5Per, "\n")
+```
+
+```{r 15, echo = FALSE}
+wealth_daywise = c()
+for (i in 1:n_days){
+    wealth_daywise[i] = mean(sim3[,i]) 
+}
+days = 1:n_days
+df = data.frame(wealth_daywise, days)
+```
+
+```{r 16, echo = FALSE}
+ggplot(data=df, aes(x=days, y=wealth_daywise, group=1)) +
+  geom_line(color="blue")+
+  geom_point() +
+  xlab('Days') +
+  ylab('Return on investments') + 
+  ggtitle('Diverse Portfolio: Returns over 20 days')
+```
+
+# Write a report summarizing your portfolios and your VaR findings.
+
+Portfolio 1: Modeling a safe portfolio
+average return on investment: 470509.6
+5% VaR value of 337695.5
+
+Portfolio 2: High Risk portfolio
+average return on investment: 387633 
+5% VaR value of 260963.1 
+
+Portfolio 3: Diverse portfolio
+average return on investment:141.0608 
+5% VaR value of (-99868.85 )
+
+The average ROI of the safe portfolio was the highest out of the 3 portfolios at 470510. The high risk portfolio average ROI was second highest at 387633, followed by the diverse portfolio ROI of 141. Portfolio 3, the diverse portfolio was given equal weights for all EFTs to compare the returns over the time period. The bootstrap appraoch was used to arrive at the conclusions above. The 5% VaR value for portfolio 3 is -99868.85, implying that portfolio 3 has a 95% chance of making more than 99868.85 over the next day. 
+
+# Market segmentation
+## Segment the market for NutrientH20 based off of the tweets of its sampled Twitter followers collected over a seven-day period in June 2014. Each tweet was categorized based on its content into any of the 36 categories (may be more tasn one for each tweet) by a human annotator contracted through Amazon's Mechanical Turk service.
+```{r 17, include = FALSE}
+library(ggplot2)
+library(LICORS) 
+library(foreach)
+library(mosaic)
+library(tidyverse)
+library(reshape2)
+library(RCurl)
+library(fpc)
+library(cluster)
+social_marketing = read.csv("./Data/social_marketing.csv") 
+dim(social_marketing)
+attach(social_marketing) 
+summary(social_marketing)
+```
+
+* Number of rows = 7882, number of columns = 37
+* Each row represents one use, labeled by a random, anonymous, and unique 9-character alphanumeric code
+* Each column represents an interest or subject category (column 1 represents name and columns 2-37 represent variables)
+
+```{r 18, echo = FALSE}
+library(dplyr)
+# Drop columns chatter, spam, and adult, and uncategorized from the dataframe
+social_marketing_new = select(social_marketing, -c(chatter, spam, adult, uncategorized))
+```
+
+* Columns "chatter", "spam", "adult", and "uncategorized" were removed because these categories are either irrelevant to our analysis or contain inappropriate content by "bots" rather than actual consumers
+
+```{r 19, echo = FALSE}
+# Center and scale the data
+X = social_marketing_new[,(2:33)]
+X = scale(X, center = TRUE, scale = TRUE)
+
+# Extract the centers and scales from the rescaled data (which are named attributes)
+mu = attr(X, "scaled:center")
+sigma = attr(X, "scaled:scale")
+
+```
+
+```{r 20, echo = FALSE}
+set.seed(123)
+# Determine the number of clusters
+# function to compute total within-cluster sum of square 
+wss <- function(k) {
+  kmeans(X, k, nstart = 10 )$tot.withinss
+}
+
+# Compute for k = 2 to k = 15
+k.values = 2:15
+
+# Extract within-cluster sum of squares for 2-15 clusters
+wss_values <- map_dbl(k.values, wss)
+
+# Plot the wss plot
+plot(k.values, wss_values,
+       type="b", pch = 19, frame = FALSE, 
+       xlab="Number of clusters K",
+       ylab="Total within-clusters sum of squares")
+```
+
+* Number of clusters that will be used for the analysis report is 5 as it is near the "elbow" of the plot
+
+```{r 21, echo = FALSE}
+# Run k-means with 5 clusters and 25 starts
+clust1 = kmeans(X, 5, nstart = 25)
+sm_clust1 = cbind(social_marketing_new, clust1$cluster)
+```
+
+```{r 22, echo = FALSE}
+# What are the clusters?
+clust1$center[1,]*sigma + mu
+clust1$center[2,]*sigma + mu
+clust1$center[3,]*sigma + mu
+clust1$center[4,]*sigma + mu
+clust1$center[5,]*sigma + mu
+
+```
+
+```{r 23, echo = FALSE}
+# Visualize clusters
+plotcluster(sm_clust1[,2:33], clust1$cluster) # Cluster looks well-separated
+
+# Aggregate info to main data
+sm_clust1_main = as.data.frame(cbind(clust1$center[1,]*sigma + mu, 
+                            clust1$center[2,]*sigma + mu,
+                            clust1$center[3,]*sigma + mu,
+                            clust1$center[4,]*sigma + mu,
+                            clust1$center[5,]*sigma + mu))
+
+# Renaming clusters
+names(sm_clust1_main) <- c('Cluster_1',
+                'Cluster_2',
+                'Cluster_3',
+                'Cluster_4',
+                'Cluster_5')
+
+
+```
+
+```{r 24, echo = FALSE}
+sm_clust1_main$type <- row.names(sm_clust1_main)
+# Cluster 1
+ggplot(sm_clust1_main, aes(x =reorder(type, -Cluster_1) , y=Cluster_1)) +
+  geom_bar(stat="identity", position ="dodge") + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle=-40, hjust=.1)) + 
+  labs(title="Cluster 1",
+        x ="Category", y = "Cluster center values")
+
+# Cluster 2
+ggplot(sm_clust1_main, aes(x =reorder(type, -Cluster_2) , y=Cluster_2)) +
+  geom_bar(stat="identity", position ="dodge") + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle=-40, hjust=.1)) + 
+  labs(title="Cluster 2",
+        x ="Category", y = "Cluster center values")
+
+# Cluster 3
+ggplot(sm_clust1_main, aes(x =reorder(type, -Cluster_3) , y=Cluster_3)) +
+  geom_bar(stat="identity", position ="dodge") + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle=-40, hjust=.1)) + 
+  labs(title="Cluster 3",
+        x ="Category", y = "Cluster center values")
+
+# Cluster 4
+ggplot(sm_clust1_main, aes(x =reorder(type, -Cluster_4) , y=Cluster_4)) +
+  geom_bar(stat="identity", position ="dodge") + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle=-40, hjust=.1)) + 
+  labs(title="Cluster 4",
+        x ="Category", y = "Cluster center values")
+
+# Cluster 5
+ggplot(sm_clust1_main, aes(x =reorder(type, -Cluster_5) , y=Cluster_5)) +
+  geom_bar(stat="identity", position ="dodge") + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle=-40, hjust=.1)) + 
+  labs(title="Cluster 5",
+        x ="Category", y = "Cluster center values")
+```
+
+Dear Mr./Ms./Mrs. X,
+Per our commitment to identify market segments of your social media audience based on the Tweets posted by a sample of profiles from your company's  followers list on Twitter, we have identified five (5) distinct market segments. In our report, we define a market segment as a cluster of consumers that share a correlated interest then group them to as a latent category The following is a brief summary of the data that we received from Amazon's Mechanical Turk annotator:
+Total Twitter Users: 7882
+Total Variables: 37
+Each one of these user's tweets were tracked over a seven-day period in June 2014, then were assigned one or more categories based on the content of those tweets. After parsing through the data, we have decided to drop four variables from the original dataframe we deemed irrelevant to our analysis or whose content come from "bots", not real consumer profiles. These variables are "chatter", "spam", "adult", and "uncategorized." We created algorithms that works iteratively to assign each data point to one of the five clusters based feature similarity done by assigning a data point to a cluster whose nearest centroid (center point) is closest to it. With the identification of market segments, NutrientH20 will be able to leverage this information to understand their audience better and hone their social media marketing campaigns into a more targeted approach. Through K-Means partitional clustering, we identified five (5) key distinct market segments in NutrientH20's Twitter audience that will each be given a unique name:
+
+
+Cluster 1: Political Junkies
+
+These consumers are especially vocal in matters relating to political discourse. This cluster of people are fond of traveling and exploring the world and are up-to-date in the news cycle. These consumers are likely to support and engage with a company who shares their political views, e.g. social justice. A sound marketing approach would be one that highlights the company's global initiatives e.g. sustainability in combatting climate change. It is important to highlight that this cluster may be particularly challenging to market to considering that not all "political" people share the same political opinions. Being neutral or overly one-sided in a political issue may alienate some groups of people.
+
+Cluster 2: Master Chefs
+
+This group of consumers are fond to talk about cooking in their tweets, along with photo-sharing, fashion, and beauty. These people are particularly interested with all things cooking and the display of that cooking through photo-sharing apps such as Instagram, Pinterest, Snapchat, or even Twitter. Aesthetics are particularly important as they discuss topics around fashion and beauty. A marketing approach suitable for this segment is to periodically post common and exotic recipes that can use NutrientH20, and post photos of NutrientH20 products in an artful and aesthetically pleasing way on the company's social media accounts
+
+Cluster 3: Gen Z
+
+A reasonable inference is to consider this market segment as Gen Z individuals who are currently in university or high school students researching about college. This cluster is very savvy in regards to photo-sharing apps such as Instagram, Pinterest, Snapchat, or even Twitter, and may prefer to document, convey, and receive information visually. They also enjoy topics related to shopping, online gaming, and researching about current events-dispositions a typical Gen Z might be interested in. To market this group successfully, a marketing approach that is visual, use Gen Z lingo, and that touch on school or college-related topics may prove beneficial.
+
+Cluster 4: Health Enthusiasts
+
+This cluster is very evident in its inkling towards health-conscious topics. They are very interested in health nutrition and personal fitness. A sound marketing strategy to this particular group of people is to cater towards their interests in health and wellness. NutrientH20 may employ marketing campaigns that highlight the products' health benefits (high in minerals, vitamins-low in calories), and suggest it to be a product that complements fitness.
+
+Cluster 5: Fathers (age demographic) / Southerners (geographic)
+
+Cluster 5 could be assigned to a group of consumers depending on what metric is used to determine the group. From an age demographic point of view, this cluster consists of fathers. On the other hand, from a geographic point of view, this cluster consists of southern U.S consumers. They both display a disposition to be passionate sports-enthusastic religious people with traditional family values. A reasonable marketing approach for either metric is to convey a message that NutrientH20 is to be shared with anyone in the family or with friends on game night.
+
+Above is our report in conducting marketing segmentation for your Twitter audience using the K-Means clustering method. 
+
+# Author attribution
+
+```{r 25, echo = FALSE}
+library(tm) 
+library(tidyverse)
+library(slam)
+library(proxy)
+library(randomForest)
+library(caret)
+
+readerPlain = function(fname){
+  readPlain(elem=list(content=readLines(fname)), 
+            id=fname, language='en') }
+
+#get all the files in c50train and c50 test
+file_list_train = Sys.glob('./Data/ReutersC50/C50train/*/*.txt')
+file_list_test=Sys.glob('./Data/ReutersC50/C50test/*/*.txt')
+
+#read them
+train=lapply(file_list_train, readerPlain)
+test=lapply(file_list_test, readerPlain)
+
+# Clean up the file names
+trainnames = file_list_train %>%
+  { strsplit(., '/', fixed=TRUE) } %>%
+  { lapply(., tail, n=2) } %>%
+  { lapply(., paste0, collapse = '') } %>%
+  unlist
+testnames=file_list_train %>%
+  { strsplit(., '/', fixed=TRUE) } %>%
+  { lapply(., tail, n=2) } %>%
+  { lapply(., paste0, collapse = '') } %>%
+  unlist
+
+#rename the articles
+names(train)=trainnames
+names(test)=testnames
+
+## once you have documents in a vector, you 
+## create a text mining 'corpus' with: 
+train_raw = Corpus(VectorSource(train))
+test_raw = Corpus(VectorSource(test))
+
+#####DATA PREPROCESSING AND ANALYSIS PIPE LINE
+train_documents = train_raw %>%
+  tm_map(content_transformer(tolower))  %>%             # 1.make everything lowercase
+  tm_map(content_transformer(removeNumbers)) %>%        # 2.remove numbers
+  tm_map(content_transformer(removePunctuation)) %>%    # 3.remove punctuation
+  tm_map(content_transformer(stripWhitespace))          # 4.remove excess white-space
+
+test_documents = test_raw %>%
+  tm_map(content_transformer(tolower))  %>%             # 1.make everything lowercase
+  tm_map(content_transformer(removeNumbers)) %>%        # 2.remove numbers
+  tm_map(content_transformer(removePunctuation)) %>%    # 3.remove punctuation
+  tm_map(content_transformer(stripWhitespace))          # 4.remove excess white-space
+
+stopwords("en") #5 remove stopwords
+
+train_documents = tm_map(train_documents, content_transformer(removeWords), stopwords("en"))
+test_documents = tm_map(test_documents, content_transformer(removeWords), stopwords("en"))
+
+## create a doc-term-matrix from the corpus
+DTM_train = DocumentTermMatrix(train_documents)
+DTM_train # some basic summary statistics
+
+DTM_test = DocumentTermMatrix(test_documents)
+DTM_test
+
+## 6. Finally, let's drop those terms that only occur in one or two documents
+## This is a common step: the noise of the "long tail" (rare terms)
+## can be huge, and there is nothing to learn if a term occured once.
+## Below removes those terms that have count 0 in >95% of docs.  
+
+DTM_train = removeSparseTerms(DTM_train, 0.95)
+DTM_train # now ~ 801 terms (versus ~32570 before)
+
+DTM_test = removeSparseTerms(DTM_test, 0.95)
+DTM_test #now ~ 816 terms (versus ~33373 before)
+
+# 7.construct TF IDF weights -- might be useful if we wanted to use these
+# as features in a predictive model
+tfidf_train = weightTfIdf(DTM_train)
+tfidf_test = weightTfIdf(DTM_test)
+
+####change it into matrix format
+trainmatrix=as.matrix(tfidf_train)
+
+##### name_train<--- to get the name of the author (which will be what we predict), store it as an index for now
+name_train<-regmatches(trainnames, regexpr("[[:alpha:]]+", trainnames))
+rownames(trainmatrix)<-name_train
+
+testmatrix=as.matrix(tfidf_test)
+name_test<-regmatches(testnames, regexpr("[[:alpha:]]+", testnames))
+rownames(testmatrix)<-name_test
+
+#####PCA and Random Forest
+
+scrub_cols = which(colSums(trainmatrix) == 0)
+trainmatrix = trainmatrix[,-scrub_cols]
+
+###words that appear in the test set, but not in train set, and vice versa. We will add those words into a column and put very small number(<0.01) as a value
+### If we put 0 as a value, prcomp throws an error
+newwords= setdiff(colnames(testmatrix),colnames(trainmatrix))
+newmatrix<-matrix(runif(2500*90, 0.0, 0.01), nrow=2500, ncol=length(newwords))
+colnames(newmatrix)<-newwords
+
+trainmatrix<-cbind(trainmatrix,newmatrix)
+
+newwords<-setdiff(colnames(trainmatrix), colnames(testmatrix))
+newmatrix<-matrix(runif(2500*59, 0.0, 0.01), nrow=2500, ncol=length(newwords))
+colnames(newmatrix)<-newwords
+
+testmatrix<-cbind(testmatrix, newmatrix)
+
+#### PCA analysis
+pca_train = prcomp(trainmatrix, scale=TRUE)
+
+
+pca_train$rotation[order(abs(pca_train$rotation[,1]),decreasing=TRUE),1][1:25]
+pca_train$rotation[order(abs(pca_train$rotation[,2]),decreasing=TRUE),2][1:25]
+
+
+pca_train$x[,1:2]
+
+plot(pca_train$x[,1:2], xlab="PCA 1 direction", ylab="PCA 2 direction", bty="n",
+     type='n')
+text(pca_train$x[,1:2], cex=0.7)
+
+#### apply PCA analysis from train set on the test set
+pca_test=predict(pca_train, testmatrix)
+
+### change it to the dataframe form. Now we got everything to do the supervised learning. We got PC1~PC700 and name of the artist as features now. 
+train_df = data.frame(pca_train$x,name_train)
+test_df= data.frame(pca_test, name_test)
+
+
+####### Easier way to write PC1+PC2+...+PC70
+var <- paste("PC", 1:70, sep="")
+fmla <- as.formula(paste("as.factor(name_train) ~ ", paste(var, collapse= "+")))
+
+### we will use random forest to predict the name of authors. We will use PC1 ~ PC 70(from PCA analysis) to predict it. 
+forest_coast = randomForest(fmla,
+                            data = train_df, ntree=500)
+prediction=predict(forest_coast, test_df)
+
+####Accuarcy:48.1% 
+postResample(prediction, as.factor(test_df$name_test))
+```
+
+# Association rule mining
+## Find some interesting association rules for the shopping baskets in the dataset "groceries."
+
+```{r 26, include=FALSE}
+library(tidyverse)
+library(arules) 
+library(arulesViz)
+groceries = scan("./Data/groceries.txt", what = "", sep = "\n")
+```
+
+```{r 27, echo = FALSE}
+head(groceries)
+
+# Cast groceries as a special arules "transactions" class
+groceries_split = strsplit(groceries, ",")
+groceries_trans = as(groceries_split, "transactions")
+summary(groceries_trans)
+
+```
+
+* There is a total of 9835 shopping baskets in the dataset, which includes various items.
+* Over half of shopping baskets (5101) have 3 items or less
+* The most popular item is whole milk which is listed in 2513 transactions; It is followed by other vegetables, rolls/buns, and soda.
+
+```{r 28, echo = FALSE}
+# Now run the 'apriori' algorithm
+# Look at rules with support = .05 & confidence = .1 & maximum length = 2
+grocrules1 = apriori(groceries_trans, parameter = list(support = 0.005, confidence = 0.1, maxlen = 2))
+
+# Output
+inspect(grocrules1)
+
+```
+
+* A total of 763 rules was generated with support = .005 & confidence = .1 & maximum length = 2.
+
+```{r 29, echo = FALSE}
+# Let's increase support and confidence
+# Look at rules with support = .5 & confidence = .5 & maximum length = 2
+grocrules2 = apriori(groceries_trans, parameter = list(support = 0.05, confidence = 0.15, maxlen = 2))
+
+# Output
+inspect(grocrules2)
+
+```
+
+* A total of 6 rules was generated with support = .05 & confidence = .15 & maximum length = 2. 
+
+```{r 30, echo = FALSE}
+# Choose a subset
+# Lift is a measure of the performance of an association rule model (ratio of target over average)
+inspect(subset(grocrules1, subset=lift > 0.5))
+inspect(subset(grocrules1, subset=confidence > 0.1))
+inspect(subset(grocrules1, subset=lift > 0.5 & confidence > 0.1))
+
+# Plot all the rules in (support, confidence) space
+plot(grocrules1, jitter = 0) # As support increases, lift decreases
+
+# Can now look at subsets driven by the plot
+inspect(subset(grocrules1, support > 0.005))
+inspect(subset(grocrules1, confidence > 0.1))
+
+# Graph-based visualization
+sub1 = subset(grocrules1, subset=confidence > 0.1 & support > 0.005)
+summary(sub1)
+plot(sub1, method='graph')
+
+plot(head(sub1, 15, by='lift'), method='graph')
+```
+
+```{r 31, echo = FALSE}
+# Choose a subset
+inspect(subset(grocrules2, subset=lift > 0.5))
+inspect(subset(grocrules2, subset=confidence > 0.15))
+inspect(subset(grocrules2, subset=lift > 0.5 & confidence > 0.15))
+
+# Plot all the 
+plot(grocrules2, jitter = 0) # No pattern is noted
+
+# Can now look at subsets driven by the plot
+inspect(subset(grocrules2, support > 0.05))
+inspect(subset(grocrules2, confidence > 0.15))
+
+# Graph-based visualization
+sub2 = subset(grocrules2, subset=confidence > 0.15 & support > 0.05)
+summary(sub2)
+plot(sub2, method='graph')
+
+plot(head(sub2, by='lift'), method='graph')
+```
+
+Using association rules, the findings are sensible in explaining associations between items in a grocery transaction. Two associate rule algorithms were created to generate rules associated with particular values of support, confidence, and lift levels that were chosen to be fit for the dataset. Interesting key findings from both obvservations are as below:
+
+People are more likely to buy napkins if they purchased hygiene articles; sausage if they buy sliced cheese; waffles if they buy chocolate, and bakery products if they buy chocolate; ham if they buy white bread; and whole milk if they buy yogurt.
